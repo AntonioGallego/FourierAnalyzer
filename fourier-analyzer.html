@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analizador de Fourier 3D</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Outfit:wght@300;400;600;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--panel:rgba(15,15,25,.85);--border:rgba(255,255,255,.06);--text:#e0dfe8;--dim:#6b6a7a;--accent:#4af0c0;--glow:rgba(74,240,192,.15)}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;overflow:hidden;height:100vh;width:100vw}
+
+#webgl-fallback{display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:32px;text-align:center}
+#webgl-fallback.visible{display:flex}
+#webgl-fallback .icon-wrap{width:80px;height:80px;border-radius:20px;background:rgba(74,240,192,.06);border:1px solid rgba(74,240,192,.15);display:flex;align-items:center;justify-content:center}
+#webgl-fallback .icon-wrap svg{width:36px;height:36px;stroke:var(--accent);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+#webgl-fallback h2{font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;color:var(--text)}
+#webgl-fallback p{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);line-height:1.8;max-width:480px}
+#webgl-fallback .browsers{display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+#webgl-fallback .bc{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 18px;text-decoration:none;transition:.25s}
+#webgl-fallback .bc:hover{border-color:var(--accent);background:rgba(74,240,192,.04)}
+#webgl-fallback .bc .bn{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--text)}
+#webgl-fallback .bc .br{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--accent);letter-spacing:.5px}
+#webgl-fallback .bc .bg{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.5px}
+
+#canvas-container{position:fixed;inset:0;z-index:0}
+canvas{display:block}
+.ui-layer{position:fixed;z-index:10;pointer-events:none}
+.ui-layer>*{pointer-events:auto}
+
+.header{top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:20px 28px}
+.logo{font-size:15px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--accent);text-shadow:0 0 20px var(--glow)}
+.logo span{color:var(--dim);font-weight:300}
+.badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);border:1px solid var(--border);padding:4px 10px;border-radius:20px;letter-spacing:1px}
+
+.controls{bottom:0;left:0;right:0;padding:20px 28px 24px;background:linear-gradient(transparent,rgba(10,10,15,.95) 40%)}
+.controls-inner{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.signal-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.signal-btn{background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:8px 18px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:.3s;letter-spacing:.5px}
+.signal-btn:hover{border-color:var(--accent);color:var(--text)}
+.signal-btn.active{background:rgba(74,240,192,.08);border-color:var(--accent);color:var(--accent);box-shadow:0 0 20px rgba(74,240,192,.1)}
+.sliders-row{display:flex;gap:24px;justify-content:center;align-items:center;flex-wrap:wrap}
+.slider-group{display:flex;align-items:center;gap:10px}
+.slider-group label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;min-width:80px}
+.slider-group input[type=range]{-webkit-appearance:none;appearance:none;width:140px;height:3px;background:var(--border);border-radius:2px;outline:none}
+.slider-group input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 0 10px var(--glow)}
+.slider-group input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:none;box-shadow:0 0 10px var(--glow)}
+.slider-value{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);min-width:30px;text-align:right}
+
+.info-panel{top:50%;right:24px;transform:translateY(-50%);background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px;backdrop-filter:blur(20px);min-width:180px}
+.info-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.freq-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto}
+.freq-item{display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)}
+.freq-item .color-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.freq-item .freq-hz{color:var(--text)}
+.freq-item .freq-amp{color:var(--dim)}
+
+@media(max-width:768px){.info-panel{display:none}.sliders-row{gap:12px}.slider-group input[type=range]{width:100px}}
+</style>
+</head>
+<body>
+
+<div id="webgl-fallback">
+  <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M3.27 6.96l8.04-4.64a1.39 1.39 0 011.38 0l8.04 4.64c.43.25.7.71.7 1.21v9.26c0 .5-.27.96-.7 1.21l-8.04 4.64a1.39 1.39 0 01-1.38 0l-8.04-4.64a1.4 1.4 0 01-.7-1.21V8.17c0-.5.27-.96.7-1.21z"/></svg></div>
+  <h2>WebGL no disponible</h2>
+  <p>Esta visualización 3D requiere WebGL. Tu navegador actual no lo soporta o lo tiene deshabilitado.</p>
+  <p style="margin-top:4px">Abre este archivo en uno de estos navegadores:</p>
+  <div class="browsers">
+    <a class="bc" href="https://www.google.com/chrome/" target="_blank" rel="noopener"><div><div class="bn">Chrome</div><div class="br">RECOMENDADO</div></div></a>
+    <a class="bc" href="https://www.microsoft.com/edge" target="_blank" rel="noopener"><div><div class="bn">Edge</div><div class="bg">Compatible</div></div></a>
+    <a class="bc" href="https://www.mozilla.org/firefox/" target="_blank" rel="noopener"><div><div class="bn">Firefox</div><div class="bg">Verificar WebGL</div></div></a>
+  </div>
+  <p style="margin-top:12px;font-size:10px;opacity:.6">En Firefox: <span style="color:var(--accent)">about:config</span> → <span style="color:var(--accent)">webgl.disabled</span> → <span style="color:var(--accent)">false</span></p>
+</div>
+
+<div id="canvas-container"></div>
+
+<div class="ui-layer header">
+  <div class="logo">FOURIER <span>ANALYZER</span></div>
+  <div class="badge">3D SPECTRAL VIEW</div>
+</div>
+
+<div class="ui-layer controls">
+  <div class="controls-inner">
+    <div class="signal-row">
+      <button class="signal-btn active" data-signal="square">Cuadrada</button>
+      <button class="signal-btn" data-signal="sawtooth">Diente de sierra</button>
+      <button class="signal-btn" data-signal="triangle">Triangular</button>
+      <button class="signal-btn" data-signal="pulse">Pulso</button>
+      <button class="signal-btn" data-signal="custom">Personalizada</button>
+    </div>
+    <div class="sliders-row">
+      <div class="slider-group">
+        <label>Armónicos</label>
+        <input type="range" id="harmonics" min="2" max="20" value="8">
+        <span class="slider-value" id="harmonics-val">8</span>
+      </div>
+      <div class="slider-group">
+        <label>Profundidad</label>
+        <input type="range" id="spacing" min="2" max="50" value="5">
+        <span class="slider-value" id="spacing-val">5</span>
+      </div>
+      <div class="slider-group">
+        <label>Animación</label>
+        <input type="range" id="speed" min="0" max="1000" value="100">
+        <span class="slider-value" id="speed-val">100</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ui-layer info-panel">
+  <div class="info-title">Componentes</div>
+  <div class="freq-list" id="freq-list"></div>
+</div>
+
+<script>
+(function(){
+  var c=document.createElement('canvas');var gl=null;
+  try{gl=c.getContext('webgl')||c.getContext('experimental-webgl')}catch(e){}
+  if(!gl){
+    document.getElementById('webgl-fallback').classList.add('visible');
+    document.getElementById('canvas-container').style.display='none';
+    document.querySelector('.header').style.display='none';
+    document.querySelector('.controls').style.display='none';
+    document.querySelector('.info-panel').style.display='none';
+    window.__NO_WEBGL=true;
+  }
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+if(!window.__NO_WEBGL){
+(function(){
+"use strict";
+
+var SAMPLES=512;
+
+function getHarmonics(type,N){
+  var h=[],k,n;
+  switch(type){
+    case'square':for(k=1;h.length<N;k+=2)h.push({freq:k,amp:1/k,phase:0});break;
+    case'sawtooth':for(k=1;k<=N;k++)h.push({freq:k,amp:(k%2===0?-1:1)*(1/k),phase:0});break;
+    case'triangle':for(k=0;h.length<N;k++){n=2*k+1;h.push({freq:n,amp:Math.pow(-1,k)/(n*n),phase:0})}break;
+    case'pulse':for(k=1;k<=N;k++)h.push({freq:k,amp:1/N,phase:0});break;
+    case'custom':
+      h.push({freq:1,amp:1,phase:0},{freq:2.5,amp:.6,phase:Math.PI/4},{freq:4,amp:.4,phase:Math.PI/3},
+             {freq:7,amp:.25,phase:0},{freq:11,amp:.15,phase:Math.PI/6},{freq:16,amp:.1,phase:Math.PI/2});
+      while(h.length<N)h.push({freq:20+h.length*3,amp:.05/h.length,phase:Math.random()*Math.PI});
+      break;
+  }
+  h.sort(function(a,b){return Math.abs(b.amp)-Math.abs(a.amp)});
+  return h.slice(0,N);
+}
+
+function generateSignal(harmonics,t,ph){
+  var v=0;
+  for(var i=0;i<harmonics.length;i++){var hh=harmonics[i];v+=hh.amp*Math.sin(2*Math.PI*hh.freq*t+hh.phase+ph)}
+  return v;
+}
+
+var palette=[0x4af0c0,0x6366f1,0xf472b6,0xfbbf24,0x38bdf8,0xa78bfa,0xfb7185,0x34d399,0xf59e0b,0x818cf8,0xe879f9,0x22d3ee,0xf97316,0x86efac,0xc084fc,0xfda4af,0x67e8f9,0xfde047,0xa3e635,0xff6b6b];
+function getColor(i){return palette[i%palette.length]}
+function getColorCSS(i){return'#'+palette[i%palette.length].toString(16).padStart(6,'0')}
+
+// ─── THREE ────────────────────────────────────────────
+var container=document.getElementById('canvas-container');
+var scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x0a0a0f,0.0015);
+var camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.1,2000);
+camera.position.set(80,60,100);
+var renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x0a0a0f,1);
+container.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0x404060,0.5));
+var dl=new THREE.DirectionalLight(0xffffff,0.3);dl.position.set(50,100,50);scene.add(dl);
+
+// ─── ORBIT ────────────────────────────────────────────
+var isDragging=false,isPanning=false,prevMouse={x:0,y:0};
+var spherical={theta:0.8,phi:1.1,radius:180};
+var panOffset=new THREE.Vector3(0,0,0);
+
+function updateCamera(){
+  var r=spherical.radius,phi=Math.max(0.1,Math.min(Math.PI-0.1,spherical.phi));
+  camera.position.set(r*Math.sin(phi)*Math.cos(spherical.theta)+panOffset.x,r*Math.cos(phi)+panOffset.y,r*Math.sin(phi)*Math.sin(spherical.theta)+panOffset.z);
+  camera.lookAt(panOffset.x,panOffset.y,panOffset.z);
+}
+renderer.domElement.addEventListener('mousedown',function(e){isDragging=true;isPanning=e.shiftKey;prevMouse={x:e.clientX,y:e.clientY}});
+window.addEventListener('mousemove',function(e){
+  if(!isDragging)return;var dx=e.clientX-prevMouse.x,dy=e.clientY-prevMouse.y;
+  if(isPanning){var s=0.15,right=new THREE.Vector3();right.crossVectors(camera.up,new THREE.Vector3().subVectors(camera.position,panOffset)).normalize();var up=camera.up.clone();panOffset.add(right.multiplyScalar(-dx*s));panOffset.add(up.multiplyScalar(dy*s))}
+  else{spherical.theta-=dx*0.008;spherical.phi-=dy*0.008}
+  prevMouse={x:e.clientX,y:e.clientY};updateCamera();
+});
+window.addEventListener('mouseup',function(){isDragging=false});
+renderer.domElement.addEventListener('wheel',function(e){e.preventDefault();spherical.radius+=e.deltaY*0.1;spherical.radius=Math.max(40,Math.min(500,spherical.radius));updateCamera()},{passive:false});
+var touchId=null;
+renderer.domElement.addEventListener('touchstart',function(e){if(e.touches.length===1){isDragging=true;touchId=e.touches[0].identifier;prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY}}},{passive:true});
+renderer.domElement.addEventListener('touchmove',function(e){if(!isDragging)return;for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier===touchId){spherical.theta-=(t.clientX-prevMouse.x)*0.008;spherical.phi-=(t.clientY-prevMouse.y)*0.008;prevMouse={x:t.clientX,y:t.clientY};updateCamera()}}},{passive:true});
+renderer.domElement.addEventListener('touchend',function(e){for(var i=0;i<e.changedTouches.length;i++){if(e.changedTouches[i].identifier===touchId){isDragging=false;touchId=null}}},{passive:true});
+updateCamera();
+
+// ─── GRID ─────────────────────────────────────────────
+(function(){
+  var sz=300,d=50,geo=new THREE.BufferGeometry(),v=[],half=sz/2,step=sz/d;
+  for(var i=0;i<=d;i++){var p=-half+i*step;v.push(-half,-30,p,half,-30,p);v.push(p,-30,-half,p,-30,half)}
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(v,3));
+  scene.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x1a1a2e,transparent:true,opacity:0.3})));
+})();
+
+// ─── STATE ────────────────────────────────────────────
+var waveLayers=[];
+var currentSignal='square';
+var numHarmonics=8;
+var layerSpacing=5;
+var animSpeed=100;
+var animPhase=0;
+
+// ─── BUILDERS ─────────────────────────────────────────
+function createWaveLine(points,color,thick){
+  var group=new THREE.Group();
+  var geo=new THREE.BufferGeometry().setFromPoints(points);
+  // main line
+  group.add(new THREE.Line(geo,new THREE.LineBasicMaterial({color:color,transparent:true,opacity:0.95,linewidth:1})));
+  // glow layer 1
+  group.add(new THREE.Line(geo.clone(),new THREE.LineBasicMaterial({color:color,transparent:true,opacity:thick?0.35:0.18,linewidth:1})));
+  group.children[1].scale.set(1,thick?1.06:1.03,1);
+  if(thick){
+    // extra glow layer for the composite signal
+    group.add(new THREE.Line(geo.clone(),new THREE.LineBasicMaterial({color:color,transparent:true,opacity:0.12,linewidth:1})));
+    group.children[2].scale.set(1,1.12,1);
+    // offset duplicates for visual thickness (Y offsets)
+    var offsets=[0.3,-0.3,0.15,-0.15];
+    for(var oi=0;oi<offsets.length;oi++){
+      var dup=new THREE.Line(geo.clone(),new THREE.LineBasicMaterial({color:color,transparent:true,opacity:0.45,linewidth:1}));
+      dup.position.y=offsets[oi];
+      group.add(dup);
+    }
+  }
+  return group;
+}
+
+function createLayerPlane(z,color,w,h){
+  var mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:0.04,side:THREE.DoubleSide}));
+  mesh.position.z=z;return mesh;
+}
+
+function createLabel(text,position,color){
+  var canvas=document.createElement('canvas');canvas.width=256;canvas.height=64;
+  var c=canvas.getContext('2d');c.font='600 28px JetBrains Mono';
+  c.fillStyle='#'+color.toString(16).padStart(6,'0');c.textAlign='left';c.fillText(text,8,40);
+  var tex=new THREE.CanvasTexture(canvas);tex.minFilter=THREE.LinearFilter;
+  var sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0.7}));
+  sprite.position.copy(position);sprite.scale.set(18,4.5,1);return sprite;
+}
+
+var cuboidGroup=null;
+function createCuboid(xHalf,yHalf,zFront,zBack){
+  if(cuboidGroup)scene.remove(cuboidGroup);
+  cuboidGroup=new THREE.Group();
+  var x=xHalf,y=yHalf,zf=zFront,zb=zBack;
+  var edges=[[-x,-y,zf],[x,-y,zf],[x,y,zf],[-x,y,zf],[-x,-y,zf],[-x,-y,zb],[-x,y,zb],[-x,y,zf],[x,y,zf],[x,y,zb],[-x,y,zb],[-x,-y,zb],[x,-y,zb],[x,-y,zf],[x,-y,zb],[x,y,zb]];
+  var pts=edges.map(function(e){return new THREE.Vector3(e[0],e[1],e[2])});
+  cuboidGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x4af0c0,transparent:true,opacity:0.06})));
+  scene.add(cuboidGroup);
+}
+
+function buildLayers(){
+  for(var i=0;i<waveLayers.length;i++)scene.remove(waveLayers[i].group);
+  waveLayers=[];
+
+  var harmonics=getHarmonics(currentSignal,numHarmonics);
+  var xScale=80,ampScale=20;
+  var totalDepth=harmonics.length*layerSpacing;
+  var zFront=totalDepth/2;
+
+  createCuboid(xScale+2,ampScale+5,zFront+5,zFront-totalDepth-5);
+
+  // ── Composite (front, thick) ──
+  var compZ=zFront;
+  var compGroup=new THREE.Group();
+  var compPts=[];
+  for(var i=0;i<SAMPLES;i++){var t=i/SAMPLES;compPts.push(new THREE.Vector3((t-0.5)*xScale*2,generateSignal(harmonics,t,0)*ampScale,compZ))}
+  compGroup.add(createWaveLine(compPts,0xffffff,true));
+  compGroup.add(createLayerPlane(compZ,0xffffff,xScale*2.1,ampScale*2.2));
+  compGroup.add(createLabel('SEÑAL',new THREE.Vector3(-xScale-12,ampScale*0.6,compZ),0xffffff));
+  var axGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-xScale,0,compZ),new THREE.Vector3(xScale,0,compZ)]);
+  compGroup.add(new THREE.LineSegments(axGeo,new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.08})));
+  scene.add(compGroup);
+  waveLayers.push({group:compGroup,type:'composite',harmonics:harmonics,z:compZ,thick:true});
+
+  // ── Harmonics (recede) ──
+  for(var idx=0;idx<harmonics.length;idx++){
+    var h=harmonics[idx];
+    var z=zFront-(idx+1)*layerSpacing;
+    var group=new THREE.Group();
+    var pts=[];
+    for(var j=0;j<SAMPLES;j++){var t=j/SAMPLES;pts.push(new THREE.Vector3((t-0.5)*xScale*2,h.amp*Math.sin(2*Math.PI*h.freq*t+h.phase)*ampScale,z))}
+    var color=getColor(idx);
+    group.add(createWaveLine(pts,color,false));
+    group.add(createLayerPlane(z,color,xScale*2.1,ampScale*2.2));
+    var ft=h.freq%1===0?h.freq+'f':h.freq.toFixed(1)+'f';
+    group.add(createLabel(ft,new THREE.Vector3(-xScale-12,ampScale*0.6,z),color));
+    var axG=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-xScale,0,z),new THREE.Vector3(xScale,0,z)]);
+    group.add(new THREE.LineSegments(axG,new THREE.LineBasicMaterial({color:color,transparent:true,opacity:0.1})));
+    scene.add(group);
+    waveLayers.push({group:group,type:'harmonic',harmonic:h,z:z,index:idx});
+  }
+
+  // depth rails
+  var railGroup=new THREE.Group();
+  var rp=[[-xScale,-ampScale],[xScale,-ampScale],[-xScale,ampScale],[xScale,ampScale]];
+  for(var ri=0;ri<rp.length;ri++){
+    var rGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(rp[ri][0],rp[ri][1],zFront),new THREE.Vector3(rp[ri][0],rp[ri][1],zFront-totalDepth)]);
+    railGroup.add(new THREE.Line(rGeo,new THREE.LineBasicMaterial({color:0x4af0c0,transparent:true,opacity:0.03})));
+  }
+  scene.add(railGroup);
+  waveLayers.push({group:railGroup,type:'rails'});
+
+  updateFreqList(harmonics);
+}
+
+function updateFreqList(harmonics){
+  var list=document.getElementById('freq-list');
+  var html='<div class="freq-item"><span class="color-dot" style="background:#fff"></span><span class="freq-hz">Señal</span><span class="freq-amp">Σ</span></div>';
+  for(var i=0;i<harmonics.length;i++){
+    var h=harmonics[i];var ft=h.freq%1===0?h.freq+'f₀':h.freq.toFixed(1)+'f₀';
+    html+='<div class="freq-item"><span class="color-dot" style="background:'+getColorCSS(i)+'"></span><span class="freq-hz">'+ft+'</span><span class="freq-amp">'+Math.abs(h.amp).toFixed(3)+'</span></div>';
+  }
+  list.innerHTML=html;
+}
+
+// ─── ANIMATION ────────────────────────────────────────
+function animate(){
+  requestAnimationFrame(animate);
+  var spd=animSpeed/1000;
+  if(spd>0){animPhase+=spd*0.03;updateWaveforms()}
+  renderer.render(scene,camera);
+}
+
+function updateWaveforms(){
+  var xScale=80,ampScale=20;
+  for(var li=0;li<waveLayers.length;li++){
+    var layer=waveLayers[li];
+    if(layer.type==='composite'){
+      var harmonics=layer.harmonics;
+      var lineGroup=layer.group.children[0]; // the createWaveLine group
+      // update ALL line children inside the thick group
+      for(var ci=0;ci<lineGroup.children.length;ci++){
+        var pos=lineGroup.children[ci].geometry.attributes.position;
+        for(var i=0;i<SAMPLES;i++){
+          var t=i/SAMPLES;
+          pos.setY(i,generateSignal(harmonics,t,animPhase)*ampScale);
+        }
+        pos.needsUpdate=true;
+      }
+    }else if(layer.type==='harmonic'){
+      var h=layer.harmonic;
+      var lineGroup=layer.group.children[0];
+      for(var ci=0;ci<lineGroup.children.length;ci++){
+        var pos=lineGroup.children[ci].geometry.attributes.position;
+        for(var i=0;i<SAMPLES;i++){
+          var t=i/SAMPLES;
+          pos.setY(i,h.amp*Math.sin(2*Math.PI*h.freq*t+h.phase+animPhase)*ampScale);
+        }
+        pos.needsUpdate=true;
+      }
+    }
+  }
+}
+
+// ─── UI ───────────────────────────────────────────────
+var btns=document.querySelectorAll('.signal-btn');
+for(var bi=0;bi<btns.length;bi++){
+  btns[bi].addEventListener('click',function(){
+    for(var bj=0;bj<btns.length;bj++)btns[bj].classList.remove('active');
+    this.classList.add('active');currentSignal=this.getAttribute('data-signal');buildLayers();
+  });
+}
+document.getElementById('harmonics').addEventListener('input',function(e){numHarmonics=parseInt(e.target.value);document.getElementById('harmonics-val').textContent=numHarmonics;buildLayers()});
+document.getElementById('spacing').addEventListener('input',function(e){layerSpacing=parseInt(e.target.value);document.getElementById('spacing-val').textContent=layerSpacing;buildLayers()});
+document.getElementById('speed').addEventListener('input',function(e){animSpeed=parseInt(e.target.value);document.getElementById('speed-val').textContent=animSpeed});
+
+window.addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+
+buildLayers();
+animate();
+})();
+}
+</script>
+</body>
+</html>
